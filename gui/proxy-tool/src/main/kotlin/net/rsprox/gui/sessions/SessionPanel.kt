@@ -28,14 +28,18 @@ import org.jdesktop.swingx.treetable.DefaultTreeTableModel
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.FlowLayout
+import java.awt.datatransfer.Clipboard
+import java.awt.datatransfer.StringSelection
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.text.SimpleDateFormat
 import java.util.concurrent.ForkJoinPool
 import javax.swing.BorderFactory
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JScrollBar
 import javax.swing.SwingUtilities
+import javax.swing.TransferHandler
 import kotlin.time.measureTime
 
 public class SessionPanel(
@@ -102,6 +106,43 @@ public class SessionPanel(
         }
 
         treeTable.expandAll()
+        treeTable.transferHandler = object : TransferHandler() {
+
+            override fun exportToClipboard(comp: JComponent, clip: Clipboard, action: Int) {
+                val selectedRows = treeTable.selectedRows ?: return
+                if (selectedRows.isEmpty()) return
+                val sb = buildString {
+                    for (row in selectedRows) {
+                        val currentPath = treeTable.getPathForRow(row)
+                        val node = currentPath.lastPathComponent as? AbstractMutableTreeTableNode ?: continue
+                        val level = currentPath.pathCount - 2
+                        appendNodeWithIndentation(node, level)
+                    }
+                }
+                val transferable = StringSelection(sb.toString())
+                clip.setContents(transferable, transferable)
+            }
+
+            private fun StringBuilder.appendNodeWithIndentation(node: AbstractMutableTreeTableNode, level: Int) {
+                if (level > 0) {
+                    val indent = TAB.repeat(level)
+                    append(indent)
+                }
+                val columnCount = node.columnCount
+                for (i in 0..<columnCount) {
+                    val value = node.getValueAt(i)
+                    append(value?.toString() ?: "")
+                    if (i < columnCount - 1) {
+                        append(TAB)
+                    }
+                }
+                appendLine()
+                for (i in 0..<node.childCount) {
+                    val child = node.getChildAt(i) as? AbstractMutableTreeTableNode ?: continue
+                    appendNodeWithIndentation(child, level + 1)
+                }
+            }
+        }
         scrollPane =
             FlatScrollPane().apply {
                 border = BorderFactory.createEmptyBorder()
@@ -188,6 +229,7 @@ public class SessionPanel(
                                 SessionType.Native -> {
                                     App.service.launchNativeClient(UiSessionMonitor())
                                 }
+
                                 SessionType.RuneLite -> {
                                     App.service.launchRuneLiteClient(UiSessionMonitor())
                                 }
@@ -430,5 +472,6 @@ public class SessionPanel(
         private abstract class SessionBaseTreeTableNode : AbstractMutableTreeTableNode(null, true)
 
         private val logger = InlineLogger()
+        private const val TAB = "    "
     }
 }
